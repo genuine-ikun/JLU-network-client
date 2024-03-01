@@ -1,0 +1,47 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "jlu-network-client",
+    "version": "0.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true,
+        "sidecar": true,
+        "scope": [{"name": "bin/dogcom", "sidecar": true, "args": ["-m", "dhcp", "-c", "./bin/dogcom.conf", "-v"]}]
+      }
+    },
+    "windows": [
+      {
+        "title": "jlu-network-client",
+        "width": 800,
+        "height": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "Test",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "externalBin": ["bin/dogcom"]
+    }
+  }
+}
