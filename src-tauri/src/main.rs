@@ -1,13 +1,20 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{api::process::{Command, CommandEvent}};
+use std::time::Duration;
 
-// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
+use tauri::api::process::{Command, CommandEvent};
+use tokio::{sync::{mpsc, Mutex}, time::sleep};
+
+struct NetworkState{
+    tx: tokio::sync::Mutex<mpsc::Sender<String>>,
+}
+
+
 #[tauri::command(async)]
 async fn connect_network() -> String
 {
-    let (mut rx, _) = Command::new_sidecar("dogcom").expect("无法找到二进制程序").args(["-m", "dhcp", "-c", "./bin/dogcom.conf", "-v"]).spawn().expect("无法运行网络连接程序");
+    let (mut rx, _) = Command::new_sidecar("dogcom").expect("无法找到二进制程序").args(["-m", "dhcp", "-c", "dogcom.conf", "-v"]).spawn().expect("无法运行网络连接程序");
 
     let mut result = String::new();
 
@@ -18,13 +25,57 @@ async fn connect_network() -> String
             result.push_str(&line);
         }
     }
+
     result
+}
+
+#[tauri::command]
+async fn change_state(message: String, state: tauri::State<'_, NetworkState>) -> Result<(), ()>
+{
+    // println!("change_state trigger");
+    let tx = state.tx.lock().await;
+    tx.send(message).await.unwrap();
+
+    Ok(())
+}
+
+async fn test()
+{
+    loop 
+    {
+        sleep(Duration::from_secs(1)).await;
+        println!("连接网络");
+    }
 }
 
 fn main() {
 
+    let mut handles = Vec::new();
+
+    // 前端使用tx发送消息，后端使用rx接受
+    let (tx, mut rx) = mpsc::channel::<String>(1);
+
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![connect_network])
+        .manage(NetworkState{tx: Mutex::new(tx)}) // 用于前端和后端通信
+        .setup(|_app| {
+            // 主循环，根据前端消息启动或停止
+            tauri::async_runtime::spawn(async move{
+                loop 
+                {
+                    while let Some(message) = rx.recv().await
+                    {
+                        println!("Rust Received: {}", message);
+                        match message.as_str() {
+                            "1" => handles.push(tokio::spawn(test())),
+                            "2" => handles[0].abort(),
+                            _ => ()
+                        }
+                    }
+                }
+            });
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![connect_network, change_state])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

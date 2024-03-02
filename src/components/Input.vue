@@ -7,13 +7,14 @@ const name = ref("");
 const password = ref("")
 
 let connet = () => {
-  invoke("connect_network").then((response) => mesg.value = String(response))
+  let message = name.value
+  invoke("change_state", {message: message}).then((response) => mesg.value = String(response))
 }
 </script>
 
 <template>
   <form class="input_group" @submit.prevent="connet">
-    <input id="greet-input" v-model="name" placeholder="用户名" />
+    <input id="username-input" v-model="name" placeholder="用户名" />
     <input id="password-input" type="password" v-model="password" placeholder="密码" />
     <button type="submit">登陆</button>
   </form>
