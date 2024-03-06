@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/tauri";
 
 const mesg = ref("");
@@ -10,6 +10,17 @@ let connet = () => {
   let message = name.value
   invoke("change_state", {message: message}).then((response) => mesg.value = String(response))
 }
+
+const read_config = () => {
+  invoke("js_read_config").then((res) => {
+    name.value = res.username
+    password.value = res.password
+  })
+}
+
+onMounted(() => {
+  read_config()
+})
 </script>
 
 <template>
