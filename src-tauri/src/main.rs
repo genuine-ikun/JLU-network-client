@@ -121,6 +121,47 @@ fn js_read_config() -> UserConfig
     }
 }
 
+#[tauri::command]
+fn js_write_config(username: String, password: String, host_ip: String, mac: String)
+{
+    let path = std::env::current_exe()
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .join("dogcom.conf");
+    let file = fs::File::open(&path).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let mut config_map = HashMap::new();
+
+    for line in reader.lines()
+    {
+        let line = line.unwrap();
+        let parts: Vec<&str> = line.split('=').map(|s| s.trim()).collect();
+        config_map.insert(parts[0].to_string(), parts[1].trim_matches('\'').to_string());
+    }
+
+    config_map.insert("username".to_string(), username);
+    config_map.insert("password".to_string(), password);
+    config_map.insert("host_ip".to_string(), host_ip);
+    config_map.insert("mac".to_string(), mac);
+
+    // 写入配置文件
+    let mut file = fs::File::create(&path).unwrap();
+    for (key, value) in config_map
+    {
+        // mac地址不需要单引号
+        if key == "mac"
+        {
+            let line = format!("{} = {}\n", key, value);
+            file.write(line.as_bytes()).unwrap();
+            continue;
+        }
+
+        let line = format!("{} = '{}'\n", key, value);
+        file.write(line.as_bytes()).unwrap();
+    }
+}
+
 async fn test()
 {
     loop 
@@ -161,7 +202,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![connect_network, change_state, js_read_config])
+        .invoke_handler(tauri::generate_handler![connect_network, change_state, js_read_config, js_write_config])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
