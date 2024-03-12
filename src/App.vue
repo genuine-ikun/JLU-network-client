@@ -3,20 +3,15 @@ import Input from "./components/Input.vue";
 </script>
 
 <template>
-  <div class="container">
-    <h1 style="margin-bottom: 3em;">JLU网络登录</h1>
+  <div class="container w-screen h-screen flex justify-center items-center flex-col pt-8">
+
+    <div class="absolute top-0 w-full h-8" data-tauri-drag-region></div>
+
+    <img src="/user.svg" alt="" class="w-40">
+    <!-- <h1 style="margin-bottom: 3em;">JLU网络登录</h1> -->
     <Input />
   </div>
 </template>
 
-<style scoped>
-.container
-{
-  height: 100vh;
-  widows: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-</style>
+
+

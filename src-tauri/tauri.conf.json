@@ -17,14 +17,18 @@
         "all": false,
         "open": true,
         "sidecar": true,
-        "scope": [{"name": "bin/dogcom", "sidecar": true, "args": ["-m", "dhcp", "-c", "./bin/dogcom.conf", "-v"]}]
+        "scope": [{"name": "bin/dogcom", "sidecar": true, "args": ["-m", "dhcp", "-v", "-c", {"validator": "\\S*"}]}]
+      },
+      "window": {
+        "startDragging": true
       }
     },
     "windows": [
       {
         "title": "jlu-network-client",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {

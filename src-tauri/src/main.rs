@@ -1,105 +1,61 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{fs, io::{ErrorKind, Read, Write}, time::Duration};
+mod config;
+use config::{check_config_file, js_read_config, js_write_config};
+use tauri::{api::process::{Command, CommandEvent}, Manager};
 
-use tauri::api::process::{Command, CommandEvent};
-use tokio::{sync::{mpsc, Mutex}, time::sleep};
+use tokio::sync::{mpsc, Mutex};
+use tokio_util::sync::CancellationToken;
 
-struct NetworkState{
-    tx: tokio::sync::Mutex<mpsc::Sender<String>>,
-}
-
-
-#[tauri::command(async)]
-async fn connect_network() -> String
+pub struct NetworkState
 {
-    let (mut rx, _) = Command::new_sidecar("dogcom").expect("无法找到二进制程序").args(["-m", "dhcp", "-c", "dogcom.conf", "-v"]).spawn().expect("无法运行网络连接程序");
-
-    let mut result = String::new();
-
-    while let Some(event) = rx.recv().await
-    {
-        if let CommandEvent::Stdout(line) = event{
-            // print!("{}", line);
-            result.push_str(&line);
-        }
-    }
-
-    result
+    pub tx: tokio::sync::Mutex<mpsc::Sender<bool>>,
 }
 
 #[tauri::command]
-async fn change_state(message: String, state: tauri::State<'_, NetworkState>) -> Result<(), ()>
+async fn change_state(run: bool, state: tauri::State<'_, NetworkState>) -> Result<(), ()>
 {
-    // println!("change_state trigger");
     let tx = state.tx.lock().await;
-    tx.send(message).await.unwrap();
+    tx.send(run).await.unwrap();
 
     Ok(())
 }
 
-const CONFIG: &str = r#"server = '10.100.61.3'
-username=''
-password=''
-host_ip = ''
-mac = 
-host_name = 'LISYSDKJ'
-host_os = 'Windows'
-CONTROLCHECKSTATUS = '\x20'
-ADAPTERNUM = '\x03'
-IPDOG = '\x01'
-PRIMARY_DNS = '10.10.10.10'
-dhcp_server = '0.0.0.0'
-AUTH_VERSION = '\x68\x00'
-KEEP_ALIVE_VERSION = '\xdc\x02'
-"#;
-
-fn check_config_file()
+#[tauri::command(async)]
+async fn connect_network(token: CancellationToken, manager: tauri::AppHandle) -> Result<(), ()>
 {
-    // 获取运行程序所在路径
-    let path = std::env::current_exe()
+    let path_buf = std::env::current_exe()
                         .unwrap()
                         .parent()
                         .unwrap()
                         .join("dogcom.conf");
+    let path = path_buf.to_string_lossy().to_string();
 
-
-    let file = match fs::File::open(&path){
-        Ok(_) => None, // 存在则返回空
-        Err(_) => {
-            match fs::File::create(&path){
-                Ok(file) => Some(file),
-                Err(_) => None
-            }
+    tauri::async_runtime::spawn(async move{
+                let (mut rx, child) = Command::new_sidecar("dogcom").expect("无法找到二进制程序").args(["-m", "dhcp", "-c", &path, "-v"]).spawn().expect("无法运行网络连接程序");
+        tokio::select! {
+            _ = token.cancelled() => {child.kill().unwrap();}
+            _ = async {
+            
+                while let Some(event) = rx.recv().await
+                {
+                    if let CommandEvent::Stdout(line) = event{
+                        println!("{}", line);
+                        manager.emit_all("dogcom", line).unwrap();
+                    }
+                }
+            } => {}
         }
-    };
+    });
 
-    match file{
-        Some(mut conf_file) => {
-            conf_file.write(CONFIG.as_bytes()).unwrap();
-        },
-        None => ()
-    }
-
+    Ok(())
 }
-
-async fn test()
-{
-    loop 
-    {
-        sleep(Duration::from_secs(1)).await;
-        println!("连接网络");
-    }
-}
-
 
 fn main() {
 
-    let mut handles = Vec::new();
-
     // 前端使用tx发送消息，后端使用rx接受
-    let (tx, mut rx) = mpsc::channel::<String>(1);
+    let (tx, mut rx) = mpsc::channel::<bool>(1);
 
     tauri::Builder::default()
         .manage(NetworkState{tx: Mutex::new(tx)}) // 用于前端和后端通信
@@ -108,23 +64,34 @@ fn main() {
             check_config_file();
 
             // 主循环，根据前端消息启动或停止
+            let mut token = CancellationToken::new();
+
+            let app_handle = app.app_handle();
+
             tauri::async_runtime::spawn(async move{
-                loop 
+                loop
                 {
                     while let Some(message) = rx.recv().await
                     {
-                        println!("Rust Received: {}", message);
-                        match message.as_str() {
-                            "1" => handles.push(tokio::spawn(test())),
-                            "2" => handles[0].abort(),
-                            _ => ()
+                        // 启动任务
+                        if message 
+                        {
+                            // test(token.clone()).await;
+                            connect_network(token.clone(), app_handle.clone()).await.unwrap();
+                        }
+                        // 取消登陆、注销
+                        else
+                        {
+                            token.cancel();
+                            token = CancellationToken::new();
                         }
                     }
                 }
             });
+
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![connect_network, change_state])
+        .invoke_handler(tauri::generate_handler![change_state, js_read_config, js_write_config])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
