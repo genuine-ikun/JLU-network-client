@@ -1,11 +1,10 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{fs, io::{BufRead, Write}, time::Duration};
+use std::{fs, io::{ErrorKind, Read, Write}, time::Duration};
 
 use tauri::api::process::{Command, CommandEvent};
 use tokio::{sync::{mpsc, Mutex}, time::sleep};
-use std::collections::HashMap;
 
 struct NetworkState{
     tx: tokio::sync::Mutex<mpsc::Sender<String>>,
@@ -56,15 +55,6 @@ AUTH_VERSION = '\x68\x00'
 KEEP_ALIVE_VERSION = '\xdc\x02'
 "#;
 
-#[derive(serde::Serialize, Debug)]
-pub struct UserConfig
-{
-    username: String,
-    password: String,
-    host_ip: String,
-    mac: String
-}
-
 fn check_config_file()
 {
     // 获取运行程序所在路径
@@ -94,74 +84,6 @@ fn check_config_file()
 
 }
 
-#[tauri::command]
-fn js_read_config() -> UserConfig
-{
-    let path = std::env::current_exe()
-                        .unwrap()
-                        .parent()
-                        .unwrap()
-                        .join("dogcom.conf");
-    let file = fs::File::open(path).unwrap();
-    let reader = std::io::BufReader::new(file);
-    let mut config_map = HashMap::new();
-
-    for line in reader.lines()
-    {
-        let line = line.unwrap();
-        let parts: Vec<&str> = line.split('=').map(|s| s.trim()).collect();
-        config_map.insert(parts[0].to_string(), parts[1].trim_matches('\'').to_string());
-    }
-
-    UserConfig{
-        username: config_map.get("username").unwrap().clone(),
-        password: config_map.get("password").unwrap().to_string(),
-        host_ip: config_map.get("host_ip").unwrap().to_string(),
-        mac: config_map.get("mac").unwrap().to_string()
-    }
-}
-
-#[tauri::command]
-fn js_write_config(username: String, password: String, host_ip: String, mac: String)
-{
-    let path = std::env::current_exe()
-                        .unwrap()
-                        .parent()
-                        .unwrap()
-                        .join("dogcom.conf");
-    let file = fs::File::open(&path).unwrap();
-    let reader = std::io::BufReader::new(file);
-    let mut config_map = HashMap::new();
-
-    for line in reader.lines()
-    {
-        let line = line.unwrap();
-        let parts: Vec<&str> = line.split('=').map(|s| s.trim()).collect();
-        config_map.insert(parts[0].to_string(), parts[1].trim_matches('\'').to_string());
-    }
-
-    config_map.insert("username".to_string(), username);
-    config_map.insert("password".to_string(), password);
-    config_map.insert("host_ip".to_string(), host_ip);
-    config_map.insert("mac".to_string(), mac);
-
-    // 写入配置文件
-    let mut file = fs::File::create(&path).unwrap();
-    for (key, value) in config_map
-    {
-        // mac地址不需要单引号
-        if key == "mac"
-        {
-            let line = format!("{} = {}\n", key, value);
-            file.write(line.as_bytes()).unwrap();
-            continue;
-        }
-
-        let line = format!("{} = '{}'\n", key, value);
-        file.write(line.as_bytes()).unwrap();
-    }
-}
-
 async fn test()
 {
     loop 
@@ -181,7 +103,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(NetworkState{tx: Mutex::new(tx)}) // 用于前端和后端通信
-        .setup(|_| {
+        .setup(|app| {
 
             check_config_file();
 
@@ -202,7 +124,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![connect_network, change_state, js_read_config, js_write_config])
+        .invoke_handler(tauri::generate_handler![connect_network, change_state])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
