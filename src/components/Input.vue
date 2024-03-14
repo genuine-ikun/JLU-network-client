@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/tauri";
-import { listen } from "@tauri-apps/api/event";
+import { UnlistenFn, listen } from "@tauri-apps/api/event";
 
 const mesg = ref("");
+const run = ref(false)
 const username = ref("");
 const password = ref("")
-const run = ref(false)
 
 const read_config = () => {
   invoke("js_read_config").then((res: any) => {
@@ -17,40 +17,37 @@ const read_config = () => {
 
 const write_config = () => {
   invoke("js_write_config", {username: username.value,
-     password: password.value,
-     hostIp: "sdfd",
-     mac: "0xfffff"
-    }).then((res) => console.log(res))
-}
-
-const listen_on_dogcom = async () => {
-  await listen<string>('dogcom', (event) => {
-    console.log(`Got dogcom: ${event.payload}`)
-  } )
+    password: password.value,
+    hostIp: "sdfd",
+    mac: "0xfffff"
+  }).then((res) => console.log(res))
 }
 
 const change_state = () => {
-  run.value = !run.value
-  invoke('change_state', {run: run.value})
+  invoke("change_state", {run: run.value})
 }
 
-onMounted(() => {
+let unlisten: UnlistenFn;
+
+onMounted(async () => {
   read_config()
-  listen_on_dogcom()
+  unlisten = await listen<string>('dogcom', (event) => {
+    console.log(`Got dogcom: ${event.payload}`)
+  })
+})
+
+onUnmounted(() => {
+  unlisten()
 })
 </script>
 
 <template>
-  <form class="input_group" @submit.prevent="">
-    <input id="username-input" v-model="username" placeholder="用户名" />
-    <input id="password-input" type="password" v-model="password" placeholder="密码" />
-    <button type="submit">登陆</button>
-
+  <form class="input_group text-md">
+    <input v-model="username" placeholder="用户名" class="font-sans" />
+    <input type="password" v-model="password" placeholder="密码" class="font-sans"/>
+    <button class="bg-gray-200 hover:bg-gray-300 px-8 py-3 rounded-lg mt-3" @click="change_state();write_config()">登 录</button>
   </form>
-  <button @click="write_config">写入</button>
-  <input type="text" v-model="run" />
-  <button @click="change_state">启动</button>
-  <textarea name="" id="" cols="30" rows="10" >{{ mesg }}</textarea>
+  <!-- <textarea name="" id="" cols="30" rows="10" >{{ mesg }}</textarea> -->
 </template>
 
 <style scoped>
@@ -64,5 +61,9 @@ onMounted(() => {
 
 input{
   margin-bottom: 1em;
+  border-radius: 10px;
+  border: 2px solid #8c8c8c;
+  outline: none;
+  padding: 3px 3px 3px 10px;
 }
 </style>
